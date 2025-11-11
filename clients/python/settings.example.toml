@@ -9,9 +9,9 @@ sensor_id = "h2_purity"
 client_cn = "sensor-h2_purity-03"
 
 [certs]
-ca = "../../certs/ca/ca.crt"
-cert = "../../certs/clients/sensor-h2_purity-03/client.crt"
-key = "../../certs/clients/sensor-h2_purity-03/client.key"
+ca = "certs/ca/ca.crt"
+cert = "certs/clients/sensor-h2_purity-03/client.crt"
+key = "certs/clients/sensor-h2_purity-03/client.key"
 
 [publish]
 qos = 1
