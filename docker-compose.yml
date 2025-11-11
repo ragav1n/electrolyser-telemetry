@@ -7,15 +7,14 @@ services:
     ports:
       - "8883:8883"
     volumes:
-      - ./mosquitto/conf:/mosquitto/config
+      - ./mosquitto/conf:/mosquitto/config:rw
       - ./mosquitto/data:/mosquitto/data
       - ./certs/ca/ca.crt:/mosquitto/certs/ca.crt:ro
       - ./certs/broker/broker.crt:/mosquitto/certs/broker.crt:ro
       - ./certs/broker/broker.key:/mosquitto/certs/broker.key:ro
-      - ./mosquitto/conf/aclfile:/mosquitto/config/aclfile:ro
     environment:
       - MOSQUITTO_ALLOW_ANONYMOUS=false
-    networks:
+    networks:      
       - telemetry_net
 
   # (Added next milestone) influxdb, grafana, telegraf
