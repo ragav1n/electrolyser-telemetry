@@ -1,0 +1,25 @@
+version: "3.8"
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: mosquitto
+    restart: unless-stopped
+    ports:
+      - "8883:8883"
+    volumes:
+      - ./mosquitto/conf:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./certs/ca/ca.crt:/mosquitto/certs/ca.crt:ro
+      - ./certs/broker/broker.crt:/mosquitto/certs/broker.crt:ro
+      - ./certs/broker/broker.key:/mosquitto/certs/broker.key:ro
+      - ./mosquitto/conf/aclfile:/mosquitto/config/aclfile:ro
+    environment:
+      - MOSQUITTO_ALLOW_ANONYMOUS=false
+    networks:
+      - telemetry_net
+
+  # (Added next milestone) influxdb, grafana, telegraf
+networks:
+  telemetry_net:
+    driver: bridge
+

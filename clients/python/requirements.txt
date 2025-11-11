@@ -1,0 +1,5 @@
+paho-mqtt==1.6.1
+pydantic==2.8.2
+tomli==2.0.1
+jsonschema==4.23.0
+
