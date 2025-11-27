@@ -30,6 +30,11 @@ sim:
 	pip install -r clients/python/requirements.txt && \
 	python clients/python/publisher.py
 
+sim_plant:
+	python3 -m venv .venv && . .venv/bin/activate && \
+	pip install -r clients/python/requirements.txt && \
+	python clients/python/plant_sim.py
+
 test:
 	python3 -m venv .venv && . .venv/bin/activate && \
 	pip install jsonschema pytest && pytest -q

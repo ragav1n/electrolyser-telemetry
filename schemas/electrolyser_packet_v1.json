@@ -1,0 +1,97 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Electrolyser Stack Packet v1",
+    "type": "object",
+    "required": [
+        "device_id",
+        "timestamp",
+        "status",
+        "electrical",
+        "physical",
+        "security"
+    ],
+    "properties": {
+        "device_id": {
+            "type": "string"
+        },
+        "timestamp": {
+            "type": "string",
+            "format": "date-time"
+        },
+        "status": {
+            "type": "string",
+            "enum": [
+                "OPERATIONAL",
+                "TRIP_OVERVOLT",
+                "TRIP_LOW_WATER",
+                "RELIEF_VALVE_OPEN"
+            ]
+        },
+        "electrical": {
+            "type": "object",
+            "required": [
+                "total_voltage",
+                "stack_current",
+                "cell_voltages"
+            ],
+            "properties": {
+                "total_voltage": {
+                    "type": "number"
+                },
+                "stack_current": {
+                    "type": "number"
+                },
+                "cell_voltages": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    },
+                    "minItems": 5
+                }
+            },
+            "additionalProperties": false
+        },
+        "physical": {
+            "type": "object",
+            "required": [
+                "h2_flow_rate",
+                "tank_pressure",
+                "water_flow",
+                "temperature"
+            ],
+            "properties": {
+                "h2_flow_rate": {
+                    "type": "number"
+                },
+                "tank_pressure": {
+                    "type": "number"
+                },
+                "water_flow": {
+                    "type": "number"
+                },
+                "temperature": {
+                    "type": "number"
+                }
+            },
+            "additionalProperties": false
+        },
+        "security": {
+            "type": "object",
+            "required": [
+                "sequence_id",
+                "hash"
+            ],
+            "properties": {
+                "sequence_id": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "hash": {
+                    "type": "string"
+                }
+            },
+            "additionalProperties": false
+        }
+    },
+    "additionalProperties": false
+}

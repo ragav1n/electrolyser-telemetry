@@ -1,0 +1,13 @@
+[broker]
+host = "127.0.0.1"
+port = 8883
+
+[device]
+site_id = "rvce-plant-A"
+device_id = "ELECTROLYSER_01"
+client_cn = "device-ELECTROLYSER_01"
+
+[certs]
+ca   = "certs/ca/ca.crt"
+cert = "certs/clients/device-ELECTROLYSER_01/client.crt"
+key  = "certs/clients/device-ELECTROLYSER_01/client.key"
