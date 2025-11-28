@@ -74,4 +74,5 @@ notes/
 *.bak
 *.old
 *.orig
+backup_*/
 

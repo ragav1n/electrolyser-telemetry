@@ -5,7 +5,10 @@ ROOT="$(cd "$(dirname "$0")"/.. && pwd)"
 ACLFILE="$ROOT/mosquitto/conf/aclfile"
 
 # Backup current ACL
-cp "$ACLFILE" "$ACLFILE.bak.$(date +%s)"
+# Backup current ACL if it exists
+if [ -f "$ACLFILE" ]; then
+  cp "$ACLFILE" "$ACLFILE.bak.$(date +%s)"
+fi
 
 echo "# Auto-generated ACL entries - keep above this line" >> "$ACLFILE"
 echo "# Generated at: $(date -u)" >> "$ACLFILE"

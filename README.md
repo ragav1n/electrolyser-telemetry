@@ -34,6 +34,10 @@ The system follows a robust IoT architecture:
     -   `electrolyser/plant-A/EL1/cell/1/voltage`
     -   `electrolyser/plant-A/EL1/stack/current`
     -   `electrolyser/plant-A/irradiance/1`
+-   **Certificate Rotation**: Automated script (`scripts/pki/rotate-cert.sh`) to rotate client certificates.
+    -   Rotate single: `./scripts/pki/rotate-cert.sh <CN>`
+    -   Rotate all: `./scripts/pki/rotate-cert.sh all`
+    -   *Note*: Old certificates are backed up to a timestamped directory (e.g., `backup_YYYYMMDD_HHMMSS`) within the client folder and are gitignored.
 
 ### 3. Observability Stack
 -   **Dockerized Deployment**: The entire stack (Mosquitto, InfluxDB, Telegraf, Grafana) runs in Docker containers.
