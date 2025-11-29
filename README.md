@@ -47,10 +47,50 @@ The system follows a robust IoT architecture:
 -   **Dashboards**:
     -   **Electrolyser Comparative**: Real-time comparison of EL1 vs EL2 performance, including efficiency, yield, and safety metrics.
 
-## Key Features
--   **Real-time Monitoring**: Sub-second latency from sensor to dashboard.
--   **Historical Analysis**: Long-term data retention in InfluxDB.
--   **Scalable Design**: Decoupled architecture allows adding more sensors or plants easily.
--   **Enterprise Security**: Industry-standard TLS 1.2+ and Certificate-based identity.
+### 4. Fault Simulation
+-   **15+ Fault Modes**: Simulates real-world failures including:
+    -   Membrane pinholes, Gas crossover, Cell flooding/dry-out.
+    -   Pump failures, Sensor drifts, Telemetry dropouts.
+-   **Automated Verification**: `scripts/test_faults.py` injects faults and verifies system reaction programmatically.
+-   **Control Topic**: Faults can be triggered via MQTT topic `electrolyser/control/faults`.
+
+### 5. Web Simulation (Digital Twin)
+-   **React-based Dashboard**: A premium, SCADA-style web interface located in `web_simulation/`.
+-   **Real-time Visualization**: Connects directly to Mosquitto via WebSockets (port 9001).
+-   **Features**:
+    -   **P&ID Schematic**: Professional piping and instrumentation diagram layout.
+    -   **Live Animations**: Rotating pumps, flowing pipes, and dynamic tank levels.
+    -   **Fault Visualization**: Components glow red during fault conditions.
+
+## Quick Start
+
+### 1. Start the Stack
+```bash
+docker-compose up -d
+```
+
+### 2. Run the Simulation
+```bash
+# Install dependencies
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r clients/python/requirements.txt
+
+# Start Plant Simulation
+python clients/python/plant_sim.py
+```
+
+### 3. Launch Digital Twin
+```bash
+cd web_simulation
+npm install
+npm run dev
+# Open http://localhost:5173
+```
+
+### 4. Verify Faults
+```bash
+python scripts/test_faults.py
+```
 
 
