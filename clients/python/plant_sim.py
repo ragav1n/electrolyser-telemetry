@@ -33,10 +33,74 @@ import ssl
 import pathlib
 import random
 import argparse
-from threading import Thread, Event
+from threading import Thread, Event, Lock
 from paho.mqtt import client as mqtt
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+# Fault Definitions
+FAULT_NONE = 0
+FAULT_MEMBRANE_PINHOLE = 1
+FAULT_GAS_CROSSOVER = 2
+FAULT_CELL_FLOODING = 3
+FAULT_CELL_DRYOUT = 4
+FAULT_PUMP_FAILURE = 5
+FAULT_DCDC_FAILURE = 6
+FAULT_SOLAR_TRANSIENT = 7
+FAULT_LEVEL_SENSOR = 8
+FAULT_IRRADIANCE_DRIFT = 9
+FAULT_VOLTAGE_SENSOR_DRIFT = 10
+FAULT_TEMP_SENSOR_FAILURE = 11
+FAULT_LOOSE_BOLT = 12
+FAULT_O2_BLOCKAGE = 13
+FAULT_TELEMETRY_DROPOUT = 14
+FAULT_OVER_PRESSURE = 15
+
+FAULT_NAMES = {
+    "none": FAULT_NONE,
+    "membrane_pinhole": FAULT_MEMBRANE_PINHOLE,
+    "gas_crossover": FAULT_GAS_CROSSOVER,
+    "cell_flooding": FAULT_CELL_FLOODING,
+    "cell_dryout": FAULT_CELL_DRYOUT,
+    "pump_failure": FAULT_PUMP_FAILURE,
+    "dcdc_failure": FAULT_DCDC_FAILURE,
+    "solar_transient": FAULT_SOLAR_TRANSIENT,
+    "level_sensor": FAULT_LEVEL_SENSOR,
+    "irradiance_drift": FAULT_IRRADIANCE_DRIFT,
+    "voltage_sensor_drift": FAULT_VOLTAGE_SENSOR_DRIFT,
+    "temp_sensor_failure": FAULT_TEMP_SENSOR_FAILURE,
+    "loose_bolt": FAULT_LOOSE_BOLT,
+    "o2_blockage": FAULT_O2_BLOCKAGE,
+    "telemetry_dropout": FAULT_TELEMETRY_DROPOUT,
+    "over_pressure": FAULT_OVER_PRESSURE
+}
+
+class FaultInjector:
+    def __init__(self):
+        self.active_faults = set()
+        self.lock = Lock()
+        self.params = {} # Store fault-specific params if needed
+
+    def set_fault(self, fault_name, active=True):
+        fid = FAULT_NAMES.get(fault_name)
+        if fid is None:
+            print(f"Unknown fault: {fault_name}")
+            return
+        with self.lock:
+            if active:
+                self.active_faults.add(fid)
+                print(f"Fault activated: {fault_name}")
+            else:
+                self.active_faults.discard(fid)
+                print(f"Fault cleared: {fault_name}")
+
+    def is_active(self, fault_id):
+        with self.lock:
+            return fault_id in self.active_faults
+
+    def clear_all(self):
+        with self.lock:
+            self.active_faults.clear()
 
 # Constants (tweakable)
 FARADAY = 96485.33212  # C/mol
@@ -71,12 +135,15 @@ SENSORS_PER_EL = [
 ]
 
 # MQTT helper: create a client for each CN
-def make_mqtt_client(cn: str, broker_host="127.0.0.1", broker_port=8883):
+def make_mqtt_client(cn: str, broker_host="127.0.0.1", broker_port=8883, client_id=None):
     ca = ROOT / "certs/ca/ca.crt"
     cert = ROOT / f"certs/clients/{cn}/client.crt"
     key = ROOT / f"certs/clients/{cn}/client.key"
 
-    client = mqtt.Client(client_id=cn, protocol=mqtt.MQTTv5)
+    if client_id is None:
+        client_id = cn
+    
+    client = mqtt.Client(client_id=client_id, protocol=mqtt.MQTTv5)
     client.tls_set(ca_certs=str(ca), certfile=str(cert), keyfile=str(key),
                    tls_version=ssl.PROTOCOL_TLS_CLIENT)
     client.tls_insecure_set(False)
@@ -114,6 +181,9 @@ class ElectrolyserTwin:
         # state flags
         self.tripped = False
         self.trip_reason = None
+        
+        self.fault_injector = FaultInjector()
+        self.fault_timer = 0.0 # For time-based fault effects
 
         # compute initial tank moles from pressure using ideal gas (n = PV/RT)
         self.tank_moles = (self.tank_pressure_pa * TANK_VOLUME_M3) / (R_GAS * TANK_TEMPERATURE_K)
@@ -220,6 +290,95 @@ class ElectrolyserTwin:
         # water flow: if PV insufficient, reduce water pump duty
         self.water_flow = max(0.0, 1.2 * (self.I_stack / I_REF))
 
+        # --- FAULT INJECTION LOGIC ---
+        self.fault_timer += dt_seconds
+        
+        # 1. Membrane pinhole
+        if self.fault_injector.is_active(FAULT_MEMBRANE_PINHOLE):
+            # One or two cell voltages jump 300–800 mV higher
+            # H2 flow rate becomes higher than expected (simulated by boosting flow calc)
+            self.cell_voltages[0] += 0.5 
+            if self.N > 1: self.cell_voltages[1] += 0.4
+            self.h2_flow_Lpm *= 1.2
+
+        # 2. Gas crossover
+        if self.fault_injector.is_active(FAULT_GAS_CROSSOVER):
+            # H2/O2 flow ratio deviation (>2.1 or <1.9)
+            # Normal is ~2.0. Let's make it 2.3
+            self.o2_flow_Lpm = self.h2_flow_Lpm / 2.3
+
+        # 3. Cell flooding
+        if self.fault_injector.is_active(FAULT_CELL_FLOODING):
+            # One or more cells drop to <1.4 V, high cell-to-cell spread
+            self.cell_voltages[2] = 1.35
+            self.cell_voltages[3] = 1.38
+            # Others normal-ish
+
+        # 4. Cell dry-out
+        if self.fault_injector.is_active(FAULT_CELL_DRYOUT):
+            # All cells climb >2.2 V, temp rising
+            for i in range(self.N):
+                self.cell_voltages[i] = max(self.cell_voltages[i], 2.25)
+            self.stack_temp += 5.0 * dt_seconds # Fast rise
+
+        # 5. Water pump failure
+        if self.fault_injector.is_active(FAULT_PUMP_FAILURE):
+            self.water_flow = 0.0
+            # Temp rises fast if current is high
+            if self.I_stack > 10.0:
+                self.stack_temp += 2.0 * dt_seconds
+
+        # 6. DC-DC converter / MPPT failure
+        if self.fault_injector.is_active(FAULT_DCDC_FAILURE):
+            self.I_stack = 0.0
+            self.V_stack = self.N * U_REV # Open circuit voltage approx
+            self.cell_voltages = [self.V_stack / self.N] * self.N
+
+        # 7. Sudden solar transient damage
+        if self.fault_injector.is_active(FAULT_SOLAR_TRANSIENT):
+            # Spikes > 600 A for < 1 s repeatedly
+            if (self.fault_timer % 2.0) < 0.5:
+                self.I_stack = 650.0
+            # This would likely trip safety immediately, but we simulate the value first
+
+        # 8. Gas separator liquid level too high/low
+        if self.fault_injector.is_active(FAULT_LEVEL_SENSOR):
+            # tank_pressure erratic
+            noise = random.uniform(-2.0, 2.0)
+            self.tank_pressure_bar += noise
+
+        # 9. Irradiance sensor drift (Handled in PlantSimulator or here if local)
+        # 10. Individual cell voltage sensor drift
+        if self.fault_injector.is_active(FAULT_VOLTAGE_SENSOR_DRIFT):
+            self.cell_voltages[4] = 0.000 # Stuck at 0
+
+        # 11. Stack temperature sensor failure
+        if self.fault_injector.is_active(FAULT_TEMP_SENSOR_FAILURE):
+            self.stack_temp = 0.0
+
+        # 12. Loose or corroded high-current bolt
+        if self.fault_injector.is_active(FAULT_LOOSE_BOLT):
+            # 20-30% lower current than expected
+            self.I_stack *= 0.75
+            # Recalculate V_stack based on new I
+            self.V_stack = self.N * (self.U_rev + self.R_ohm * self.I_stack)
+            self.cell_voltages = [self.V_stack / self.N] * self.N
+
+        # 13. O2-side blockage
+        if self.fault_injector.is_active(FAULT_O2_BLOCKAGE):
+            self.o2_flow_Lpm *= 0.2
+            # Pressure rises? (Simulated locally)
+            self.stack_pressure += 0.5 * dt_seconds
+
+        # 14. MQTT / telemetry dropout (Handled in publish_all)
+        
+        # 15. Over-pressure event
+        if self.fault_injector.is_active(FAULT_OVER_PRESSURE):
+            self.tank_pressure_bar = 40.0 # Instant spike
+            self.stack_pressure = 40.0
+
+        # --- END FAULT INJECTION ---
+
         # safety checks
         self.check_safety()
 
@@ -238,6 +397,10 @@ class ElectrolyserTwin:
             self.trip_reason = "over_pressure"
 
     def publish_all(self):
+        # 14. MQTT / telemetry dropout
+        if self.fault_injector.is_active(FAULT_TELEMETRY_DROPOUT):
+            return # Do not publish anything
+
         # publish per-sensor payloads using the clients dict
         ts = time.time()
         # cell voltages
@@ -333,14 +496,26 @@ class PlantSimulator:
 
     def connect_all(self):
         # connect electrolyser device clients (pass broker args through)
+        # connect electrolyser device clients (pass broker args through)
         for el in self.electrolysers.values():
             el.connect_clients(broker_host=self.broker_host, broker_port=self.broker_port)
             # also create a "monitor-local" client mapping to existing cert monitor-local if present
             try:
-                mon = make_mqtt_client("monitor-local", broker_host=self.broker_host, broker_port=self.broker_port)
+                # Use unique client ID to avoid conflicts
+                mon = make_mqtt_client("monitor-local", broker_host=self.broker_host, broker_port=self.broker_port, client_id=f"monitor-local-{el.el}")
                 el.clients["monitor-local"] = mon
             except Exception:
                 pass
+        
+        # Connect control listener for faults
+        try:
+            # Use monitor-local certs but unique client ID
+            ctrl = make_mqtt_client("monitor-local", broker_host=self.broker_host, broker_port=self.broker_port, client_id="plant-sim-control")
+            ctrl.on_message = self.on_control_message
+            ctrl.subscribe("electrolyser/control/faults")
+            self.control_client = ctrl
+        except Exception as e:
+            print(f"Control client error: {e}")
 
         # create irradiance sensor clients
         for i in (1, 2):
@@ -360,6 +535,9 @@ class PlantSimulator:
                 c.disconnect()
             except Exception:
                 pass
+        if hasattr(self, 'control_client'):
+            self.control_client.loop_stop()
+            self.control_client.disconnect()
 
     def update_irradiance(self, dt):
         # a daily sine cycle (period 24*60*60 seconds scaled down)
@@ -371,12 +549,40 @@ class PlantSimulator:
         self.irradiance[1] = max(0.0, base + random.uniform(-80, 80))
         self.irradiance[2] = max(0.0, base * 0.95 + random.uniform(-80, 80))
 
+        # 9. Irradiance sensor drift
+        # We need a way to know if this fault is active. 
+        # Since faults are per-EL, we can check EL1's injector for global faults or just pick one.
+        # Let's assume if EL1 has FAULT_IRRADIANCE_DRIFT, we drift sensor 1
+        if self.electrolysers["EL1"].fault_injector.is_active(FAULT_IRRADIANCE_DRIFT):
+             self.irradiance[1] += 300.0 # Diverge > 200
+
     def publish_irradiance(self):
         ts = time.time()
         for i, c in self.irr_clients.items():
             payload = {"el": "PLANT", "sensor": f"irradiance_{i}", "unit": "W/m2", "timestamp": ts, "value": round(self.irradiance[i], 2), "sequence_id": int(self.t)}
             topic = f"electrolyser/plant-A/irradiance/{i}"
             publish_json(c, topic, payload)
+
+    def on_control_message(self, client, userdata, msg):
+        try:
+            payload = json.loads(msg.payload)
+            # Format: {"el": "EL1", "fault": "membrane_pinhole", "active": true}
+            el_id = payload.get("el")
+            fault = payload.get("fault")
+            active = payload.get("active", True)
+            
+            if el_id in self.electrolysers:
+                self.electrolysers[el_id].fault_injector.set_fault(fault, active)
+            elif el_id == "PLANT":
+                # Apply to all or specific plant sensors
+                # For now apply to EL1 for simplicity if it's a plant-wide thing that affects EL1 logic
+                # Or iterate all
+                for el in self.electrolysers.values():
+                    el.fault_injector.set_fault(fault, active)
+            else:
+                print(f"Unknown EL ID in control msg: {el_id}")
+        except Exception as e:
+            print(f"Error parsing control msg: {e}")
 
     def run_loop(self):
         print("Plant simulator starting, connecting to broker...")
