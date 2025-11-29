@@ -6,6 +6,7 @@ services:
     restart: unless-stopped
     ports:
       - "8883:8883"
+      - "9001:9001"
     volumes:
       - ./mosquitto/conf:/mosquitto/config:rw
       - ./mosquitto/data:/mosquitto/data

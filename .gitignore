@@ -76,3 +76,11 @@ notes/
 *.orig
 backup_*/
 
+
+# Frontend / Web App
+web_simulation/node_modules/
+web_simulation/dist/
+web_simulation/.env
+web_simulation/.env.local
+web_simulation/.env.*.local
+web_backup/
